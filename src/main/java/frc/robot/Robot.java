@@ -7,13 +7,12 @@
 
 package frc.robot;
 
-import frc.robot.SpeedControllerGroup;
+import edu.wpi.first.wpilibj.Solenoid;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.GenericHID.Hand;
 import edu.wpi.first.wpilibj.livewindow.LiveWindow;
-import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
-import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;   
+import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
 import com.ctre.phoenix.motorcontrol.ControlMode;
@@ -33,12 +32,18 @@ public class Robot extends TimedRobot {
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
 
   //Talons for four stilt climb 
-  public WPI_TalonSRX frontLeft = new WPI_TalonSRX(1);   
-  public WPI_TalonSRX frontRight = new WPI_TalonSRX(2); 
-  public WPI_TalonSRX backLeft = new WPI_TalonSRX(3);  
-  public WPI_TalonSRX backRight = new WPI_TalonSRX(4);  
-  public SpeedControllerGroup lift = new SpeedControllerGroup(frontLeft, frontRight, backLeft, backRight);
-  XboxController controller  = new XboxController(0);
+  private WPI_TalonSRX frontLeft = new WPI_TalonSRX(1);   
+  private WPI_TalonSRX frontRight = new WPI_TalonSRX(2); 
+  private WPI_TalonSRX backLeft = new WPI_TalonSRX(3);  
+  private WPI_TalonSRX backRight = new WPI_TalonSRX(4);
+  private XboxController controller  = new XboxController(0);
+
+  private Solenoid frontLeftClutch = new Solenoid(1);
+  private Solenoid frontRightClutch = new Solenoid(2);
+  private Solenoid backLeftClutch = new Solenoid(3);
+  private Solenoid backRightClutch = new Solenoid(4);
+
+  private boolean enabledPID = false;
 
   /**
    * This function is run when the robot is first started up and should be
@@ -78,10 +83,14 @@ public class Robot extends TimedRobot {
     SmartDashboard.putNumber("BL Set", backLeft.getSelectedSensorPosition());
     SmartDashboard.putNumber("BR Set", backRight.getSelectedSensorPosition());
 
-    putSendorData();
+    SmartDashboard.putNumber("Lift Delta", 0.0);
+
+    SmartDashboard.putBoolean("PID Enabled", enabledPID) ;
+
+    smartdashboard_SendorData();
   }
 
-  private void putSendorData(){
+  private void smartdashboard_SendorData(){
     SmartDashboard.putNumber("FL Pos", frontLeft.getSelectedSensorPosition());
     SmartDashboard.putNumber("FR Pos", frontRight.getSelectedSensorPosition());
     SmartDashboard.putNumber("BL Pos", backLeft.getSelectedSensorPosition());
@@ -91,7 +100,54 @@ public class Robot extends TimedRobot {
     SmartDashboard.putNumber("FR Err", frontRight.getClosedLoopError());
     SmartDashboard.putNumber("BL Err", backLeft.getClosedLoopError());
     SmartDashboard.putNumber("BR Err", backRight.getClosedLoopError());
+
+    SmartDashboard.putBoolean("FL Clutch", frontLeftClutch.get());
+    SmartDashboard.putBoolean("FR Clutch", frontRightClutch.get());
+    SmartDashboard.putBoolean("BL Clutch", backLeftClutch.get());
+    SmartDashboard.putBoolean("BR Clutch", backRightClutch.get());
+
+    SmartDashboard.putBoolean("PID Enabled", enabledPID) ;
   }
+
+  private void smartdashboard_ClutchControl(){
+    frontLeftClutch.set( SmartDashboard.getBoolean("FL Clutch", frontLeftClutch.get()) );
+    frontRightClutch.set( SmartDashboard.getBoolean("FR Clutch", frontRightClutch.get()) );
+    backLeftClutch.set( SmartDashboard.getBoolean("BL Clutch", backLeftClutch.get()) );
+    backRightClutch.set( SmartDashboard.getBoolean("BR Clutch", backRightClutch.get()) );
+  }
+
+  private void smartdashboard_LiftDelta(){
+    double liftDelta = SmartDashboard.getNumber("Lift Delta", 0);
+    if (liftDelta == 0)
+      return ;
+
+    SmartDashboard.putNumber("Lift Delta", 0);
+    frontLeft.set(ControlMode.Position, frontLeft.getSelectedSensorPosition()+liftDelta);
+    frontRight.set(ControlMode.Position, frontRight.getSelectedSensorPosition()+liftDelta);
+    backLeft.set(ControlMode.Position, backLeft.getSelectedSensorPosition()+liftDelta);
+    backRight.set(ControlMode.Position, backRight.getSelectedSensorPosition()+liftDelta);
+  }
+
+  double maxCurrent = 0.0;
+  private void smartdashboard_Current(){
+    double avgCurrent  = (frontLeft.getOutputCurrent() + frontRight.getOutputCurrent() +
+    backLeft.getOutputCurrent() + backRight.getOutputCurrent()) / 4.0;
+
+   if(avgCurrent > maxCurrent){
+     maxCurrent = avgCurrent;
+   }
+
+   SmartDashboard.putNumber("Max Current", maxCurrent);
+   SmartDashboard.putNumber("Average Current", avgCurrent);
+  }
+
+  @Override
+  public void disabledInit() {
+    frontLeft.set(ControlMode.PercentOutput, 0);
+    frontRight.set(ControlMode.PercentOutput, 0);
+    backLeft.set(ControlMode.PercentOutput, 0);
+    backRight.set(ControlMode.PercentOutput, 0);
+    }
 
   /**
    * This function is called every robot packet, no matter the mode. Use
@@ -144,10 +200,9 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void teleopPeriodic() {
-    double avgCurrent  = 0.0;
-    double maxCurrent = 0.0;
+    if (controller.getStartButtonPressed()){
+      enabledPID = true;
 
-    if (controller.getAButton()){
       double fl_set = SmartDashboard.getNumber("FL Set", frontLeft.getSelectedSensorPosition());
       double fr_set = SmartDashboard.getNumber("FR Set", frontRight.getSelectedSensorPosition());
       double bl_set = SmartDashboard.getNumber("BL Set", backLeft.getSelectedSensorPosition());
@@ -157,7 +212,26 @@ public class Robot extends TimedRobot {
       frontRight.set(ControlMode.Position, fr_set);
       backLeft.set(ControlMode.Position, bl_set);
       backRight.set(ControlMode.Position, br_set);
-    } else {
+    }
+
+    if (controller.getBackButtonPressed()){
+      enabledPID = false;
+      frontLeft.set(ControlMode.PercentOutput, 0);
+      frontRight.set(ControlMode.PercentOutput, 0);
+      backLeft.set(ControlMode.PercentOutput, 0);
+      backRight.set(ControlMode.PercentOutput, 0);
+    }
+
+    if (enabledPID){
+      double liftDelta = (controller.getTriggerAxis(Hand.kRight) * 10.0)
+                      - (controller.getTriggerAxis(Hand.kLeft) * 10.0);
+      
+      frontLeft.set(ControlMode.Position, frontLeft.getSelectedSensorPosition()+liftDelta);
+      frontRight.set(ControlMode.Position, frontRight.getSelectedSensorPosition()+liftDelta);
+      backLeft.set(ControlMode.Position, backLeft.getSelectedSensorPosition()+liftDelta);
+      backRight.set(ControlMode.Position, backRight.getSelectedSensorPosition()+liftDelta);
+    }
+    else {
       double speed = controller.getTriggerAxis(Hand.kRight) - controller.getTriggerAxis(Hand.kLeft);
 
       double speedLimit = 0.75;
@@ -188,19 +262,26 @@ public class Robot extends TimedRobot {
       frontRight.set(speed * frScale + frontSpeed + rightSpeed);
       backLeft.set(speed * blScale + backSpeed + leftSpeed);
       backRight.set(speed * brScale + backSpeed + rightSpeed);
-
-      avgCurrent = (frontLeft.getOutputCurrent() + frontRight.getOutputCurrent() +
-      backLeft.getOutputCurrent() + backRight.getOutputCurrent()) / 4.0;
-
-      if(avgCurrent > maxCurrent){
-        maxCurrent = avgCurrent;
      }
+
+    if (controller.getYButtonPressed()){
+      frontLeftClutch.set( !frontLeftClutch.get() );
+    }
+    if (controller.getBButtonPressed()){
+      frontRightClutch.set( !frontRightClutch.get() );
+    }
+    if (controller.getXButtonPressed()){
+      backLeftClutch.set( !backLeftClutch.get() );
+    }
+    if (controller.getAButtonPressed()){
+      backRightClutch.set( !backRightClutch.get() );
     }
 
-    SmartDashboard.putNumber("Max Current", maxCurrent);
-    SmartDashboard.putNumber("Average Current", avgCurrent);
+    smartdashboard_Current();
+    smartdashboard_SendorData();
 
-    putSendorData();
+    smartdashboard_ClutchControl() ;   
+    smartdashboard_LiftDelta();
   }
 
   /**
