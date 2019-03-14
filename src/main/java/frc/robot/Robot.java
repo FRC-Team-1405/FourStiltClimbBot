@@ -223,13 +223,14 @@ public class Robot extends TimedRobot {
     }
 
     if (enabledPID){
-      double liftDelta = (controller.getTriggerAxis(Hand.kRight) * 10.0)
-                      - (controller.getTriggerAxis(Hand.kLeft) * 10.0);
-      
-      frontLeft.set(ControlMode.Position, frontLeft.getSelectedSensorPosition()+liftDelta);
-      frontRight.set(ControlMode.Position, frontRight.getSelectedSensorPosition()+liftDelta);
-      backLeft.set(ControlMode.Position, backLeft.getSelectedSensorPosition()+liftDelta);
-      backRight.set(ControlMode.Position, backRight.getSelectedSensorPosition()+liftDelta);
+      int liftDelta = (int)(controller.getTriggerAxis(Hand.kRight) * 10)
+                      - (int)(controller.getTriggerAxis(Hand.kLeft) * 10);
+      if (liftDelta > 0) {
+        frontLeft.set(ControlMode.Position, frontLeft.getSelectedSensorPosition()+liftDelta);
+        frontRight.set(ControlMode.Position, frontRight.getSelectedSensorPosition()+liftDelta);
+        backLeft.set(ControlMode.Position, backLeft.getSelectedSensorPosition()+liftDelta);
+        backRight.set(ControlMode.Position, backRight.getSelectedSensorPosition()+liftDelta);
+      }
     }
     else {
       double speed = controller.getTriggerAxis(Hand.kRight) - controller.getTriggerAxis(Hand.kLeft);
@@ -279,9 +280,6 @@ public class Robot extends TimedRobot {
 
     smartdashboard_Current();
     smartdashboard_SendorData();
-
-    smartdashboard_ClutchControl() ;   
-    smartdashboard_LiftDelta();
   }
 
   /**
